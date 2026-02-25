@@ -1,0 +1,30 @@
+# Outputs/results
+outputs/
+Results/
+data/
+
+# MATLAB data
+*.mat
+
+# EyeLink / EEG / BioSemi / EEGLAB
+*.edf
+*.bdf
+*.vhdr
+*.vmrk
+*.eeg
+*.set
+*.fdt
+*.asc
+
+# Logs/temp
+*.log
+*.tmp
+
+# MATLAB autosave/backup
+*.asv
+*.m~
+
+# OS files
+.DS_Store
+
+#local files
