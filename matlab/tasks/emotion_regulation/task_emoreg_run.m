@@ -13,6 +13,10 @@ if nargin < 1 || isempty(cfg)
     cfg = cfg_emoreg_defaults();
 end
 
+if ~exist(cfg.paths.resultsDir,'dir')
+    mkdir(cfg.paths.resultsDir);
+end
+
 cfg = validate_cfg(cfg);
 
 % Participant dialog if not provided
