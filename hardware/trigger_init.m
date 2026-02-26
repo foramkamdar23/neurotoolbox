@@ -43,21 +43,35 @@ switch Trig.system
                 Trig.port, ME.message);
         end
 
-    case 'biosemi'
-        if ~isfield(cfg.trig, 'address') || isempty(cfg.trig.address)
-            error('trigger_init:MissingAddress', 'cfg.trig.address is required for BioSemi.');
+   case 'biosemi'
+        % BioSemi triggers in your lab are serial/COM based (not io64/LPT).
+        if ~isfield(cfg.trig,'port') || isempty(cfg.trig.port)
+            error('trigger_init:MissingPort', 'cfg.trig.port is required for BioSemi (serial).');
         end
-        if ~isfield(cfg.trig, 'pulseWidth') || isempty(cfg.trig.pulseWidth)
+        if ~isfield(cfg.trig,'baud') || isempty(cfg.trig.baud)
+            % Use what worked before in your old code (often 115200)
+            cfg.trig.baud = 115200;
+        end
+        if ~isfield(cfg.trig,'pulseWidth') || isempty(cfg.trig.pulseWidth)
             error('trigger_init:MissingPulseWidth', 'cfg.trig.pulseWidth is required.');
         end
-
-        Trig.address = cfg.trig.address;
-        Trig.pulseWidth = cfg.trig.pulseWidth;
-
-        Trig.handle = io64;
-        status = io64(Trig.handle);
-        if status ~= 0
-            error('trigger_init:IO64InitFailed', 'io64 failed to initialize (status=%d).', status);
+        if ~isfield(cfg.trig,'lowVal') || isempty(cfg.trig.lowVal)
+            cfg.trig.lowVal = 0;
+        end
+    
+        Trig.port      = cfg.trig.port;
+        Trig.baud      = cfg.trig.baud;
+        Trig.pulseWidth= cfg.trig.pulseWidth;
+        Trig.lowVal    = uint8(cfg.trig.lowVal);
+    
+        try
+            Trig.handle = IOPort('OpenSerialPort', Trig.port, sprintf('BaudRate=%d', Trig.baud));
+            % Ensure low on init
+            IOPort('Write', Trig.handle, uint8(Trig.lowVal));
+        catch ME
+            error('trigger_init:OpenSerialFailed', ...
+                'Failed to open serial port %s for BioSemi (serial): %s', ...
+                Trig.port, ME.message);
         end
 
     case 'none'

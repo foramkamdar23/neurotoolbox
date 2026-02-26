@@ -6,7 +6,7 @@ function Results = task_emoreg_run(cfg, P)
 %   cfg.paths.imagesDir = '/path/to/images';
 %   cfg.paths.scalesDir = '/path/to/scales';
 %   cfg.paths.resultsDir = '/path/to/results';
-%   cfg.paths.assetsDir = '/path/to/neuro_toolbox/assets';
+%   cfg.paths.assetsDir = '/path/to/neurotoolbox/assets';
 %   Results = task_emoreg_run(cfg);
 
 if nargin < 1 || isempty(cfg)
@@ -18,6 +18,7 @@ if ~exist(cfg.paths.resultsDir,'dir')
 end
 
 cfg = validate_cfg(cfg);
+cfg = normalize_trigger_cfg(cfg);   % <--- NEW: keep field names consistent
 
 % Participant dialog if not provided
 if nargin < 2 || isempty(P)
@@ -99,8 +100,9 @@ end
 keyList = unique([rowKeys numpadKeys]);
 validKeys = [keyList(:) (1:9)'];
 
-% ---- BioSemi init ----
-Trig = biosemi_init(cfg.trig);
+% ---- Trigger init (BioSemi / BrainProducts / none) ----
+% IMPORTANT: trigger_init expects FULL cfg (not cfg.trig)
+Trig = trigger_init(cfg);
 
 % ---- EyeLink init ----
 EL = eyelink_init(S, cfg, P);
@@ -124,13 +126,28 @@ Results.Meta.Script       = mfilename;
 Results.Meta.SessionStamp = P.stamp;
 Results.Meta.PhotoParams  = cfg.photo;
 
+% ---- Trigger metadata (updated to match cfg field names) ----
 Results.Meta.Trigger = struct();
-Results.Meta.Trigger.PortName    = cfg.trig.portName;
-Results.Meta.Trigger.BaudRate    = cfg.trig.baudRate;
-Results.Meta.Trigger.Enabled     = Trig.enabled;
-Results.Meta.Trigger.Dummy       = Trig.dummy;
-Results.Meta.Trigger.DummyReason = Trig.dummyReason;
-Results.Meta.Trigger.Codes       = cfg.trig.codes;
+Results.Meta.Trigger.System  = cfg.trig.system;
+Results.Meta.Trigger.Enabled = cfg.trig.useTriggers;
+Results.Meta.Trigger.Codes   = cfg.trig.codes;
+
+if isfield(cfg.trig,'port') && ~isempty(cfg.trig.port)
+    Results.Meta.Trigger.Port = cfg.trig.port;
+end
+if isfield(cfg.trig,'baud') && ~isempty(cfg.trig.baud)
+    Results.Meta.Trigger.Baud = cfg.trig.baud;
+end
+if isfield(cfg.trig,'pulseWidth') && ~isempty(cfg.trig.pulseWidth)
+    Results.Meta.Trigger.PulseWidthSec = cfg.trig.pulseWidth;
+end
+
+% Optional: record init-level state if your trigger_init populates these
+if isstruct(Trig)
+    if isfield(Trig,'enabled'),     Results.Meta.Trigger.InitEnabled = Trig.enabled; end
+    if isfield(Trig,'dummy'),       Results.Meta.Trigger.Dummy       = Trig.dummy; end
+    if isfield(Trig,'dummyReason'), Results.Meta.Trigger.DummyReason = Trig.dummyReason; end
+end
 
 Results.Meta.EyeLink = struct('Enabled',EL.enabled,'DummyMode',EL.dummymode,'EDFFile',EL.edfFile);
 Results.Meta.Dataset = struct('Id',cfg.task.image_dataset_id,'Hash',P.datasetHash,'Block',P.blockNum);
@@ -221,7 +238,9 @@ for i = 1:cfg.task.n_Trials
 
     if ~isnan(valence_rating)
         codeResp = cfg.trig.codes.valence_respBase + valence_rating;
-        Trig = sendTrigger(Trig, codeResp);
+
+        % IMPORTANT: sendTrigger signature is (Trig, code, pulseWidthSec)
+        sendTrigger(Trig, codeResp, cfg.trig.pulseWidth);
         Results = logTrigger(Results, trial, 'valence_response', codeResp);
 
         eyelinkMsg(EL, 'PHASE_VALENCE_RESPONSE B%d H%s', P.blockNum, P.datasetHash);
@@ -284,6 +303,8 @@ catch ME
 end
 end
 
+% ========================= helpers =========================
+
 function cfg = validate_cfg(cfg)
 requiredFields = {'imagesDir','scalesDir','resultsDir'};
 for i = 1:numel(requiredFields)
@@ -307,3 +328,71 @@ end
 
 ensure_dir(cfg.paths.resultsDir);
 end
+
+function cfg = normalize_trigger_cfg(cfg)
+% Normalize trigger fields so task + trigger layer agree on names.
+if ~isfield(cfg,'trig') || ~isstruct(cfg.trig)
+    cfg.trig = struct();
+end
+
+% system
+if ~isfield(cfg.trig,'system') || isempty(cfg.trig.system)
+    cfg.trig.system = 'none';
+end
+
+% enabled
+if ~isfield(cfg.trig,'useTriggers') || isempty(cfg.trig.useTriggers)
+    cfg.trig.useTriggers = true;
+end
+
+% pulse width
+if ~isfield(cfg.trig,'pulseWidth') || isempty(cfg.trig.pulseWidth)
+    if isfield(cfg.trig,'pulseWidthSec') && ~isempty(cfg.trig.pulseWidthSec)
+        cfg.trig.pulseWidth = cfg.trig.pulseWidthSec;
+    else
+        cfg.trig.pulseWidth = 0.005; % default 5 ms
+    end
+end
+
+% brainproducts fields
+if strcmpi(cfg.trig.system,'brainproducts')
+    if ~isfield(cfg.trig,'baud') || isempty(cfg.trig.baud)
+        cfg.trig.baud = 2000000;
+    end
+    if ~isfield(cfg.trig,'port') || isempty(cfg.trig.port)
+        if isfield(cfg.trig,'portName') && ~isempty(cfg.trig.portName)
+            cfg.trig.port = cfg.trig.portName;
+        end
+    end
+end
+% biosemi fields (serial-based setup in this lab)
+if strcmpi(cfg.trig.system,'biosemi')
+
+    % Map legacy portName -> port
+    if (~isfield(cfg.trig,'port') || isempty(cfg.trig.port)) ...
+            && isfield(cfg.trig,'portName') && ~isempty(cfg.trig.portName)
+        cfg.trig.port = cfg.trig.portName;
+    end
+
+    % Map legacy baudRate -> baud
+    if (~isfield(cfg.trig,'baud') || isempty(cfg.trig.baud)) ...
+            && isfield(cfg.trig,'baudRate') && ~isempty(cfg.trig.baudRate)
+        cfg.trig.baud = cfg.trig.baudRate;
+    end
+
+    % Default baud if still missing
+    if ~isfield(cfg.trig,'baud') || isempty(cfg.trig.baud)
+        cfg.trig.baud = 115200;  % typical BioSemi serial default
+    end
+
+    % Default lowVal
+    if ~isfield(cfg.trig,'lowVal') || isempty(cfg.trig.lowVal)
+        cfg.trig.lowVal = 0;
+    end
+end
+% legacy meta fields used elsewhere
+if ~isfield(cfg.trig,'allowDummy') && isfield(cfg.trig,'allowDummy')
+    % no-op; keep as-is
+end
+end
+

@@ -13,16 +13,14 @@ if nargin < 3 || isempty(pulseWidth)
 end
 
 switch lower(Trig.system)
-    case 'brainproducts'
-        % Write code, wait, then reset to 0.
+    case {'brainproducts','biosemi'}
+        low = uint8(0);
+        if isfield(Trig,'lowVal') && ~isempty(Trig.lowVal)
+            low = uint8(Trig.lowVal);
+        end
         IOPort('Write', Trig.handle, uint8(code));
         WaitSecs(pulseWidth);
-        IOPort('Write', Trig.handle, uint8(0));
-
-    case 'biosemi'
-        io64(Trig.handle, Trig.address, code);
-        WaitSecs(pulseWidth);
-        io64(Trig.handle, Trig.address, 0);
+        IOPort('Write', Trig.handle, low);
 
     case 'none'
         % No-op.

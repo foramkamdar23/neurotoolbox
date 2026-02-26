@@ -1,6 +1,6 @@
 function finalizeAndExit(cfg, Trig, EL)
 
-% ---------- EyeLink cleanup (ONLY if enabled + connected) ----------
+% ---------- EyeLink cleanup ----------
 try
     eyelinkShouldRun = isfield(cfg,'el') && isfield(cfg.el,'useEyelink') && cfg.el.useEyelink;
     eyelinkConnected = false;
@@ -14,14 +14,12 @@ try
     end
 
     if eyelinkShouldRun && eyelinkConnected
-        % If not dummy:
         if isfield(EL,'dummymode') && EL.dummymode == 0
             try, Eyelink('StopRecording'); catch, end
             try, Eyelink('SetOfflineMode'); WaitSecs(0.05); catch, end
             try, Eyelink('Command','clear_screen 0'); WaitSecs(0.05); catch, end
             try, Eyelink('CloseFile'); WaitSecs(0.2); catch, end
 
-            % Receive EDF
             try
                 if ~exist(cfg.paths.resultsDir,'dir'), mkdir(cfg.paths.resultsDir); end
                 status = Eyelink('ReceiveFile', EL.edfFile, cfg.paths.resultsDir, 1);
@@ -42,13 +40,21 @@ catch MEel
     fprintf('[EyeLink] Cleanup error: %s\n', MEel.message);
 end
 
-% ---------- BioSemi cleanup ----------
-cleanupBiosemi(Trig);
+% ---------- Trigger cleanup (Unified) ----------
+try
+    trigger_close(Trig);
+catch MEtrig
+    fprintf('[Trigger] Cleanup error: %s\n', MEtrig.message);
+end
 
 % ---------- Audio cleanup ----------
 try
-    if isfield(EL,'pahandle') && ~isempty(EL.pahandle), PsychPortAudio('Close', EL.pahandle); end
-    if isfield(EL,'pamaster') && ~isempty(EL.pamaster), PsychPortAudio('Close', EL.pamaster); end
+    if isfield(EL,'pahandle') && ~isempty(EL.pahandle)
+        PsychPortAudio('Close', EL.pahandle);
+    end
+    if isfield(EL,'pamaster') && ~isempty(EL.pamaster)
+        PsychPortAudio('Close', EL.pamaster);
+    end
 catch
 end
 
