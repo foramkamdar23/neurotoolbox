@@ -22,6 +22,34 @@ cfg.paths.assetsDir  = '/path/to/neuro_toolbox/assets';
 Results = task_emoreg_run(cfg);
 ```
 
+## Triggers (BrainProducts / BioSemi / none)
+Trigger behavior is config-driven via `cfg.trig` and implemented in `hardware/`.
+
+### Required fields
+```
+cfg.trig.system = 'brainproducts'; % 'biosemi' | 'none'
+cfg.trig.port = 'COM22';
+cfg.trig.baud = 2000000;
+cfg.trig.pulseWidth = 0.005;
+```
+
+### Initialization and usage
+```
+cfg = config_triggers(cfg);
+Trig = trigger_init(cfg);
+
+[vbl] = Screen('Flip', win);
+sendTrigger(Trig, code, cfg.trig.pulseWidth);
+
+trigger_close(Trig);
+```
+
+### BrainProducts TriggerBox Plus
+Uses `IOPort` with `BaudRate=2000000`, writes `uint8` codes (0-255), and resets to 0 after each pulse.
+
+### BioSemi
+Uses `io64` with the configured parallel port address and resets to 0 after each pulse.
+
 ### Stimuli location
 The task expects image stimuli under:
 - `cfg.paths.imagesDir/<image_dataset_id>/1.jpg ... N.jpg`
